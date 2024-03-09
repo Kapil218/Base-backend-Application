@@ -1,8 +1,12 @@
 import express from "express";
 import dotenv from "dotenv";
 import data from "./data/data.js";
+import cors from "cors";
 
 const app = express();
+// for connecting frontend n backend
+app.use(cors());
+// using node variables
 dotenv.config();
 // api calls handling
 app.get("/", (req, res) => res.send("you are asking for data"));
