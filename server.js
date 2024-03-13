@@ -19,42 +19,43 @@ app.get("/api/v1/chats/:id/", (req, res) => {
   const singleChat = data.find((c) => c._id === req.params.id);
   res.send(singleChat);
 });
-let room1Chat = [];
-let room2Chat = [];
-let room3Chat = [];
-let currRoom = 1;
-function sendData() {
-  let dataToSend;
-  if (currRoom == 1) {
-    dataToSend = room1Chat;
-  } else if (currRoom == 2) {
-    dataToSend = room2Chat;
-  } else if (currRoom == 3) {
-    dataToSend = room3Chat;
-  }
-  // Now emit the data to the client
-  console.log("dataToSend", dataToSend);
-  return dataToSend;
-}
+let roomChats = {};
 // Socket.IO event handling
 io.on("connection", function (socket) {
   console.log("Socket connected");
-  // Assigning Room to User and sending Room chats
-  socket.on("joinRoom", function (data) {
-    currRoom = data;
-    socket.emit("getData", sendData());
+  // Create a new room
+  socket.on("createRoom", function (room) {
+    if (!roomChats[room]) {
+      roomChats[room] = [];
+      io.emit("avlRooms", Object.keys(roomChats)); // Broadcast updated list of available rooms
+    }
   });
-  // Storing chats
+  // Join a room
+  socket.on("joinRoom", function (room) {
+    if (roomChats[room]) {
+      socket.join(room); // Join the specified room
+      socket.emit("getData", roomChats[room]); // Emit existing chat data for the room
+    } else {
+      // Handle error: Room does not exist
+      socket.emit("error", "Room does not exist");
+    }
+  });
+  // Store Chats
   socket.on("storeChats", function (data) {
-    if (currRoom == 1) {
-      room1Chat.push(data);
-      console.log("room 1", room1Chat);
-    } else if (currRoom == 2) {
-      room2Chat.push(data);
-      console.log("room 2", room2Chat);
-    } else if (currRoom == 3) {
-      room3Chat.push(data);
-      console.log("room 3", room3Chat);
+    const roomId = data.roomId;
+    const text = data.text;
+
+    if (!roomId || !text) {
+      // Handle error: Invalid message data
+      socket.emit("error", "Invalid message data");
+    } else if (!roomChats[roomId]) {
+      // Handle error: Room does not exist
+      socket.emit("error", "Room does not exist");
+    } else {
+      // Store message in the appropriate room's chat array
+      roomChats[roomId].push({ text });
+      // Emit updated chat data to all clients in the room
+      io.to(roomId).emit("getData", roomChats[roomId]);
     }
   });
   socket.on("disconnect", function () {
