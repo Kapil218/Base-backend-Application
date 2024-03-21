@@ -4,7 +4,6 @@ import data from "./data/data.js";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
-import { connect } from "tls";
 
 const app = express();
 app.use(cors());
@@ -19,45 +18,55 @@ app.get("/api/v1/chats/:id/", (req, res) => {
   const singleChat = data.find((c) => c._id === req.params.id);
   res.send(singleChat);
 });
-let roomChats = {};
+
+let roomChats = [];
+
 // Socket.IO event handling
 io.on("connection", function (socket) {
   console.log("Socket connected");
+  io.emit(
+    "avlRooms",
+    roomChats.map((chat) => chat.gName)
+  ); // Broadcast updated list of available rooms
   // Create a new room
   socket.on("createRoom", function (room) {
-    if (!roomChats[room]) {
-      roomChats[room] = [];
-      io.emit("avlRooms", Object.keys(roomChats)); // Broadcast updated list of available rooms
+    if (!roomChats.some((chat) => chat.gName === room)) {
+      roomChats.push({ gName: room, chat: [] });
+      io.emit(
+        "avlRooms",
+        roomChats.map((chat) => chat.gName)
+      ); // Broadcast updated list of available rooms
     }
   });
+
   // Join a room
   socket.on("joinRoom", function (room) {
-    if (roomChats[room]) {
+    const targetRoom = roomChats.find((chat) => chat.gName === room);
+    if (targetRoom) {
       socket.join(room); // Join the specified room
-      socket.emit("getData", roomChats[room]); // Emit existing chat data for the room
+      socket.emit("getData", targetRoom.chat); // Emit existing chat data for the room
     } else {
       // Handle error: Room does not exist
       socket.emit("error", "Room does not exist");
     }
   });
+
   // Store Chats
   socket.on("storeChats", function (data) {
-    const roomId = data.roomId;
-    const text = data.text;
-
-    if (!roomId || !text) {
-      // Handle error: Invalid message data
-      socket.emit("error", "Invalid message data");
-    } else if (!roomChats[roomId]) {
-      // Handle error: Room does not exist
-      socket.emit("error", "Room does not exist");
+    const roomName = data.roomName;
+    const chat = data.chat;
+    const targetRoom = roomChats.find((chats) => chats.gName === roomName);
+    if (!targetRoom || !chat.text) {
+      // Handle error: Invalid message data or room does not exist
+      socket.emit("error", "Invalid message data or room does not exist");
     } else {
       // Store message in the appropriate room's chat array
-      roomChats[roomId].push({ text });
+      targetRoom.chat.push({ chat });
       // Emit updated chat data to all clients in the room
-      io.to(roomId).emit("getData", roomChats[roomId]);
+      io.to(roomName).emit("getData", targetRoom.chat);
     }
   });
+
   socket.on("disconnect", function () {
     console.log("Socket disconnected");
   });
@@ -65,17 +74,3 @@ io.on("connection", function (socket) {
 
 const port = process.env.PORT || 5000;
 server.listen(port, () => console.log(`Server running on port ${port}`));
-
-//--------------------------------------------------------------
-// 1.  brodcast to all users
-// io.emit("brodcast", { message:  "message for all" });
-// 2. Sending Messages to the Sender only (using custom events)
-// socket.emit("brodcast", { message: `HIi Welcome` });
-// 3. Sending Messages to Everyone Except the Sender
-// socket.broadcast.emit("brodcast", { message: `message for all except sender` });
-//---------------------------------------------------------------------
-// broadcast to all connected clients except those in the room
-// io.except("roomName").emit("hello", "world not in room");
-//---------------------------------------------------------------
-// broadcast to all connected clients in the room
-// io.to("roomName").emit("hello", "world");
